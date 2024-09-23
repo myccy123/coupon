@@ -31,6 +31,7 @@ DB_NAME = config['MYSQL']['db']
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-r7$fra08+)@gn1@0sj9ch5$rm-4qor4a8(kc00m((k41d@246g'
+SECRET_MODE = False
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

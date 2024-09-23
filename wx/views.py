@@ -1,26 +1,80 @@
-import requests
-from django.contrib.auth import login
-from django.contrib.auth.models import User
+import logging
+import os
+import time
+import uuid
+from random import sample
+from string import ascii_letters, digits
 
+from django.conf import settings
+import requests
 from common.decorations import http_log
 from common.response import success, error, serialize
 from common.utils.jsonutil import loads
-from common.utils.dateutil import format_datetime
+from wechatpayv3 import WeChatPay, WeChatPayType
 
+from wx.models import UserInfo
 
-APPID = 'wx1f23481bc9aab425'
-SECRET = '0cb39c1b746a2e0b8e31f3330081017c'
-ALARM_MAP = {
-    'data': '数据告警',
-    'offline': '离线告警',
-    'expire': '流量到期提醒',
-}
+# 微信支付商户号（直连模式）或服务商商户号（服务商模式，即sp_mchid)
+MCHID = '1689201091'
+
+# 商户证书私钥
+with open(settings.BASE_DIR / 'cert' / 'apiclient_key.pem') as f:
+    PRIVATE_KEY = f.read()
+
+# 商户证书序列号
+CERT_SERIAL_NO = '29F1344589281DEC1C57C47AE22477C3AF8E660B'
+
+# API v3密钥， https://pay.weixin.qq.com/wiki/doc/apiv3/wechatpay/wechatpay3_2.shtml
+APIV3_KEY = 'zhonghuarenmingongheguowansui123'
+
+# APPID，应用ID或服务商模式下的sp_appid
+APPID = 'wx4e3c719a61caa631'
+APP_SECRET = 'cb96bd2434aceb6da98312c0750507c8'
+
+# 回调地址，也可以在调用接口的时候覆盖
+NOTIFY_URL = 'http://weaz.fangkuaixiu.com:8000/wx/notify/'
+
+# 微信支付平台证书缓存目录，减少证书下载调用次数，首次使用确保此目录为空目录.
+# 初始调试时可不设置，调试通过后再设置，示例值:'./cert'
+CERT_DIR = None
+
+# 日志记录器，记录web请求和回调细节
+logging.basicConfig(filename=os.path.join(os.getcwd(), 'demo.log'), level=logging.DEBUG,
+                    filemode='a',
+                    format='%(asctime)s - %(process)s - %(levelname)s: %(message)s')
+LOGGER = logging.getLogger("demo")
+
+# 接入模式:False=直连商户模式，True=服务商模式
+PARTNER_MODE = True
+SUB_MCHID = '1689210526' if PARTNER_MODE else None
+
+# 代理设置，None或者{"https": "http://10.10.1.10:1080"}，详细格式参见https://requests.readthedocs.io/en/latest/user/advanced/#proxies
+PROXY = None
+
+# 请求超时时间配置
+TIMEOUT = (10, 30)  # 建立连接最大超时时间是10s，读取响应的最大超时时间是30s
+
+# 初始化
+wxpay = WeChatPay(
+    wechatpay_type=WeChatPayType.NATIVE,
+    mchid=MCHID,
+    private_key=PRIVATE_KEY,
+    cert_serial_no=CERT_SERIAL_NO,
+    apiv3_key=APIV3_KEY,
+    appid=APPID,
+    notify_url=NOTIFY_URL,
+    cert_dir=CERT_DIR,
+    logger=LOGGER,
+    partner_mode=PARTNER_MODE,
+    proxy=PROXY,
+    timeout=TIMEOUT
+)
 
 
 def get_token():
     params = {
         'appid': APPID,
-        'secret': SECRET,
+        'secret': APP_SECRET,
         'grant_type': 'client_credential',
     }
     url = 'https://api.weixin.qq.com/cgi-bin/token'
@@ -39,7 +93,7 @@ def get_openid(request):
     grant_type = body.get('grantType', 'authorization_code')
     params = {
         'appid': APPID,
-        'secret': SECRET,
+        'secret': APP_SECRET,
         'js_code': js_code,
         'grant_type': grant_type,
     }
@@ -47,6 +101,68 @@ def get_openid(request):
     res = requests.get(url, params)
     print(res.json())
     if res.status_code == 200:
-        return success(res.json())
+        openid = res.json().get('openid', '')
+        is_pay = False
+        try:
+            user = UserInfo.objects.get(openid=openid)
+            is_pay = user.is_pay
+        except UserInfo.DoesNotExist:
+            UserInfo.objects.create(openid=openid)
+
+        return success({'isPay': is_pay, **res.json()})
     else:
         return error('01', '调用微信接口失败！')
+
+
+@http_log()
+def notify(request):
+    body = loads(request.body)
+    print(f'msg from wx: {body}')
+    return success()
+
+
+@http_log()
+def get_prepay_id(request):
+    body = loads(request.body)
+    # 以小程序下单为例，下单成功后，将prepay_id和其他必须的参数组合传递给小程序的wx.requestPayment接口唤起支付
+    out_trade_no = ''.join(sample(ascii_letters + digits, 8))
+    description = body.get('description', '')
+    # 单位为分
+    amount = body.get('amount', 1) * 10 * 10
+    payer = {'sub_openid' if PARTNER_MODE else 'openid': body.get('openid')}
+    code, message = wxpay.pay(
+        description=description,
+        out_trade_no=out_trade_no,
+        amount={'total': int(amount)},
+        pay_type=WeChatPayType.MINIPROG,
+        payer=payer,
+        sub_mchid=SUB_MCHID,
+        sub_appid=APPID if PARTNER_MODE else None)
+
+    result = loads(message)
+    if code in range(200, 300):
+        prepay_id = result.get('prepay_id')
+        timestamp = str(int(time.time()))
+        noncestr = str(uuid.uuid4()).replace('-', '')
+        package = 'prepay_id=' + prepay_id
+        sign = wxpay.sign(data=[APPID, timestamp, noncestr, package])
+        signtype = 'RSA'
+        return success({
+            'appId': APPID,
+            'timeStamp': timestamp,
+            'nonceStr': noncestr,
+            'prepay_id': prepay_id,
+            'package': 'prepay_id=%s' % prepay_id,
+            'signType': signtype,
+            'paySign': sign
+        })
+    else:
+        return error('01', result.get('code'))
+
+
+@http_log()
+def coupon_list(request):
+    body = loads(request.body)
+    res = wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID)
+    print(res.json())
+    return success()

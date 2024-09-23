@@ -20,4 +20,7 @@ from .views import *
 app_name = 'wx'
 urlpatterns = [
     path('get/openid/', get_openid, name='get_openid'),
+    path('get/prepayid/', get_prepay_id, name='get_prepay_id'),
+    path('coupon/list/', coupon_list, name='coupon_list'),
+    path('notify/', notify, name='notify'),
 ]
