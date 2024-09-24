@@ -10,6 +10,8 @@ import requests
 from common.decorations import http_log
 from common.response import success, error, serialize
 from common.utils.jsonutil import loads, dumps
+from common.utils.dateutil import format_date, today
+from common.utils.strutil import gen_id
 from wechatpayv3 import WeChatPay, WeChatPayType
 
 from wx.models import UserInfo, PaymentInfo
@@ -25,8 +27,12 @@ SUB_MCHID = '1689210526' if PARTNER_MODE else None
 with open(settings.BASE_DIR / 'cert' / 'apiclient_key.pem') as f:
     PRIVATE_KEY = f.read()
 
+with open(settings.BASE_DIR / 'cert' / 'sub_apiclient_key.pem') as f:
+    SUB_PRIVATE_KEY = f.read()
+
 # 商户证书序列号
 CERT_SERIAL_NO = '29F1344589281DEC1C57C47AE22477C3AF8E660B'
+SUB_CERT_SERIAL_NO = '42B48F978AF56D14AE669A416068EC6B69FD7783'
 
 # API v3密钥， https://pay.weixin.qq.com/wiki/doc/apiv3/wechatpay/wechatpay3_2.shtml
 APIV3_KEY = 'zhonghuarenmingongheguowansui123'
@@ -37,7 +43,7 @@ SUB_APPID = 'wx4e3c719a61caa631'
 APP_SECRET = 'cb96bd2434aceb6da98312c0750507c8'
 
 # 回调地址，也可以在调用接口的时候覆盖
-NOTIFY_URL = 'http://weaz.fangkuaixiu.com:8000/wx/notify/'
+NOTIFY_URL = 'https://weaz.fangkuaixiu.com/wx/notify/'
 
 # 微信支付平台证书缓存目录，减少证书下载调用次数，首次使用确保此目录为空目录.
 # 初始调试时可不设置，调试通过后再设置，示例值:'./cert'
@@ -67,6 +73,21 @@ wxpay = WeChatPay(
     cert_dir=CERT_DIR,
     logger=LOGGER,
     partner_mode=PARTNER_MODE,
+    proxy=PROXY,
+    timeout=TIMEOUT
+)
+
+sub_wxpay = WeChatPay(
+    wechatpay_type=WeChatPayType.NATIVE,
+    mchid=SUB_MCHID,
+    private_key=SUB_PRIVATE_KEY,
+    cert_serial_no=SUB_CERT_SERIAL_NO,
+    apiv3_key=APIV3_KEY,
+    appid=SUB_APPID,
+    notify_url=NOTIFY_URL,
+    cert_dir=CERT_DIR,
+    logger=LOGGER,
+    partner_mode=False,
     proxy=PROXY,
     timeout=TIMEOUT
 )
@@ -127,6 +148,8 @@ def notify(request):
     resource = result.get('resource', {})
     if result.get('event_type') == 'TRANSACTION.SUCCESS':
         PaymentInfo.objects.create(openid=resource.get('payer').get('sub_openid'),
+                                   transaction_id=resource.get('transaction_id'),
+                                   out_trade_no=resource.get('out_trade_no'),
                                    amount=resource.get('amount').get('total') / 100,
                                    sp_appid=resource.get('sp_appid'),
                                    sub_appid=resource.get('sub_appid'),
@@ -139,6 +162,7 @@ def notify(request):
         try:
             u = UserInfo.objects.get(openid=resource.get('payer').get('sub_openid'))
             u.is_pay = True
+            u.save()
         except UserInfo.DoesNotExist:
             pass
 
@@ -186,8 +210,48 @@ def get_prepay_id(request):
 
 
 @http_log()
-def coupon_list(request):
+def refund(request):
     body = loads(request.body)
-    res = wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID)
+    open_id = body.get('openid', '')
+    reason = body.get('reason', '')
+    try:
+        payment = PaymentInfo.objects.get(openid=open_id)
+    except PaymentInfo.DoesNotExist:
+        return error('01', '未找到可退款的订单！')
+    amount = {'refund': int(payment.amount * 100), 'total': int(payment.amount * 100), 'currency': 'CNY'}
+    res = wxpay.refund(gen_id(32), amount, transaction_id=payment.transaction_id,
+                       reason=reason, notify_url=NOTIFY_URL ,sub_mchid=SUB_MCHID)
     print(res)
     return success()
+
+
+@http_log()
+def coupon_list(request):
+    body = loads(request.body)
+    page = body.get('page', 1)
+    page_size = body.get('pageSize', 10)
+    page_size = 10 if page_size > 10 else page_size
+    res = sub_wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID, offset=page - 1, limit=page_size)
+    res_data = loads(res[1]).get('data', [])
+    return success(res_data)
+
+
+@http_log()
+def coupon_send(request):
+    body = loads(request.body)
+    open_id = body.get('openid', '')
+    stock_id = body.get('stockId', '')
+    out_request_no = SUB_MCHID + format_date(today(), '%Y%m%d') + gen_id()
+    res = sub_wxpay.marketing_favor_stock_send(stock_id, open_id, out_request_no, SUB_MCHID)
+    res_data = loads(res[1])
+    return success(res_data)
+
+
+@http_log()
+def my_coupons(request):
+    body = loads(request.body)
+    open_id = body.get('openid', '')
+    stock_id = body.get('stockId', None)
+    res = sub_wxpay.marketing_favor_user_coupon(open_id, stock_id=stock_id, creator_mchid=SUB_MCHID)
+    res_data = loads(res[1]).get('data', [])
+    return success(res_data)

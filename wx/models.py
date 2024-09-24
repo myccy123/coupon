@@ -33,6 +33,8 @@ class UserInfo(BaseModel):
 
 class PaymentInfo(BaseModel):
     openid = models.CharField(max_length=50, blank=True)
+    transaction_id = models.CharField(max_length=50, blank=True)
+    out_trade_no = models.CharField(max_length=50, blank=True)
     amount = models.FloatField(default=0)
     sp_appid = models.CharField(max_length=50, blank=True)
     sub_appid = models.CharField(max_length=50, blank=True)
