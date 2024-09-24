@@ -29,3 +29,16 @@ class UserInfo(BaseModel):
     email = models.CharField(max_length=50, blank=True)
     token = models.CharField(max_length=50, blank=True)
     avatar = models.FileField(upload_to='avatar', blank=True)
+
+
+class PaymentInfo(BaseModel):
+    openid = models.CharField(max_length=50, blank=True)
+    amount = models.FloatField(default=0)
+    sp_appid = models.CharField(max_length=50, blank=True)
+    sub_appid = models.CharField(max_length=50, blank=True)
+    sp_mchid = models.CharField(max_length=50, blank=True)
+    sub_mchid = models.CharField(max_length=50, blank=True)
+    sp_openid = models.CharField(max_length=50, blank=True)
+    sub_openid = models.CharField(max_length=50, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+    res_content = models.TextField(blank=True)

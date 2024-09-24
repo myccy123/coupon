@@ -9,13 +9,17 @@ from django.conf import settings
 import requests
 from common.decorations import http_log
 from common.response import success, error, serialize
-from common.utils.jsonutil import loads
+from common.utils.jsonutil import loads, dumps
 from wechatpayv3 import WeChatPay, WeChatPayType
 
-from wx.models import UserInfo
+from wx.models import UserInfo, PaymentInfo
 
 # 微信支付商户号（直连模式）或服务商商户号（服务商模式，即sp_mchid)
 MCHID = '1689201091'
+
+# 接入模式:False=直连商户模式，True=服务商模式
+PARTNER_MODE = True
+SUB_MCHID = '1689210526' if PARTNER_MODE else None
 
 # 商户证书私钥
 with open(settings.BASE_DIR / 'cert' / 'apiclient_key.pem') as f:
@@ -28,7 +32,8 @@ CERT_SERIAL_NO = '29F1344589281DEC1C57C47AE22477C3AF8E660B'
 APIV3_KEY = 'zhonghuarenmingongheguowansui123'
 
 # APPID，应用ID或服务商模式下的sp_appid
-APPID = 'wx4e3c719a61caa631'
+APPID = 'wx27a560d7b1d32c78'
+SUB_APPID = 'wx4e3c719a61caa631'
 APP_SECRET = 'cb96bd2434aceb6da98312c0750507c8'
 
 # 回调地址，也可以在调用接口的时候覆盖
@@ -43,10 +48,6 @@ logging.basicConfig(filename=os.path.join(os.getcwd(), 'demo.log'), level=loggin
                     filemode='a',
                     format='%(asctime)s - %(process)s - %(levelname)s: %(message)s')
 LOGGER = logging.getLogger("demo")
-
-# 接入模式:False=直连商户模式，True=服务商模式
-PARTNER_MODE = True
-SUB_MCHID = '1689210526' if PARTNER_MODE else None
 
 # 代理设置，None或者{"https": "http://10.10.1.10:1080"}，详细格式参见https://requests.readthedocs.io/en/latest/user/advanced/#proxies
 PROXY = None
@@ -92,7 +93,7 @@ def get_openid(request):
     js_code = body.get('jsCode', '')
     grant_type = body.get('grantType', 'authorization_code')
     params = {
-        'appid': APPID,
+        'appid': SUB_APPID,
         'secret': APP_SECRET,
         'js_code': js_code,
         'grant_type': grant_type,
@@ -116,8 +117,32 @@ def get_openid(request):
 
 @http_log()
 def notify(request):
-    body = loads(request.body)
-    print(f'msg from wx: {body}')
+    headers = {
+        'Wechatpay-Signature': request.META.get('HTTP_WECHATPAY_SIGNATURE'),
+        'Wechatpay-Timestamp': request.META.get('HTTP_WECHATPAY_TIMESTAMP'),
+        'Wechatpay-Nonce': request.META.get('HTTP_WECHATPAY_NONCE'),
+        'Wechatpay-Serial': request.META.get('HTTP_WECHATPAY_SERIAL')
+    }
+    result = wxpay.callback(headers=headers, body=request.body)
+    resource = result.get('resource', {})
+    if result.get('event_type') == 'TRANSACTION.SUCCESS':
+        PaymentInfo.objects.create(openid=resource.get('payer').get('sub_openid'),
+                                   amount=resource.get('amount').get('total') / 100,
+                                   sp_appid=resource.get('sp_appid'),
+                                   sub_appid=resource.get('sub_appid'),
+                                   sp_mchid=resource.get('sp_mchid'),
+                                   sub_mchid=resource.get('sub_mchid'),
+                                   sp_openid=resource.get('payer').get('sp_openid'),
+                                   sub_openid=resource.get('payer').get('sub_openid'),
+                                   note=result.get('summary'),
+                                   res_content=dumps(result))
+        try:
+            u = UserInfo.objects.get(openid=resource.get('payer').get('sub_openid'))
+            u.is_pay = True
+        except UserInfo.DoesNotExist:
+            pass
+
+    print(f'msg from wx: {result}')
     return success()
 
 
@@ -137,7 +162,7 @@ def get_prepay_id(request):
         pay_type=WeChatPayType.MINIPROG,
         payer=payer,
         sub_mchid=SUB_MCHID,
-        sub_appid=APPID if PARTNER_MODE else None)
+        sub_appid=SUB_APPID if PARTNER_MODE else None)
 
     result = loads(message)
     if code in range(200, 300):
@@ -145,7 +170,7 @@ def get_prepay_id(request):
         timestamp = str(int(time.time()))
         noncestr = str(uuid.uuid4()).replace('-', '')
         package = 'prepay_id=' + prepay_id
-        sign = wxpay.sign(data=[APPID, timestamp, noncestr, package])
+        sign = wxpay.sign(data=[SUB_APPID, timestamp, noncestr, package])
         signtype = 'RSA'
         return success({
             'appId': APPID,
@@ -164,5 +189,5 @@ def get_prepay_id(request):
 def coupon_list(request):
     body = loads(request.body)
     res = wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID)
-    print(res.json())
+    print(res)
     return success()

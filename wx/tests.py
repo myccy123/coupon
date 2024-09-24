@@ -1,3 +1,4 @@
-from django.test import TestCase
+a = {'id': 'cb36b37e-fc4d-5667-8a83-12e40754be82', 'create_time': '2024-09-24T10:51:20+08:00', 'resource_type': 'encrypt-resource', 'event_type': 'TRANSACTION.SUCCESS', 'summary': '支付成功', 'resource': {'sp_mchid': '1689201091', 'sub_mchid': '1689210526', 'sp_appid': 'wx27a560d7b1d32c78', 'sub_appid': 'wx4e3c719a61caa631', 'out_trade_no': 'c70pTuhP', 'transaction_id': '4200002426202409249196953411', 'trade_type': 'JSAPI', 'trade_state': 'SUCCESS', 'trade_state_desc': '支付成功', 'bank_type': 'OTHERS', 'attach': '', 'success_time': '2024-09-24T10:51:20+08:00', 'payer': {'sp_openid': 'og1lp6rgnvPnFINLh3tBA4gOFSg8', 'sub_openid': 'ohYuA7XZPQyudmLYzcfNbSX7Yetg'}, 'amount': {'total': 1, 'payer_total': 1, 'currency': 'CNY', 'payer_currency': 'CNY'}}}
+from common.utils.jsonutil import pretty, dumps
 
-# Create your tests here.
+print(pretty(dumps(a)))
