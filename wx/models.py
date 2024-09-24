@@ -44,3 +44,17 @@ class PaymentInfo(BaseModel):
     sub_openid = models.CharField(max_length=50, blank=True)
     note = models.CharField(max_length=500, blank=True)
     res_content = models.TextField(blank=True)
+
+
+class RefundInfo(BaseModel):
+    refund_id = models.CharField(max_length=50, blank=True)
+    out_refund_no = models.CharField(max_length=50, blank=True)
+    transaction_id = models.CharField(max_length=50, blank=True)
+    out_trade_no = models.CharField(max_length=50, blank=True)
+    refund = models.FloatField(default=0)
+    total = models.FloatField(default=0)
+    sp_mchid = models.CharField(max_length=50, blank=True)
+    sub_mchid = models.CharField(max_length=50, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+    account = models.CharField(max_length=500, blank=True)
+    res_content = models.TextField(blank=True)

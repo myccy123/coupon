@@ -165,6 +165,8 @@ def notify(request):
             u.save()
         except UserInfo.DoesNotExist:
             pass
+    elif result.get('event_type') == 'REFUND.SUCCESS':
+        pass
 
     print(f'msg from wx: {result}')
     return success()
@@ -221,8 +223,10 @@ def refund(request):
     amount = {'refund': int(payment.amount * 100), 'total': int(payment.amount * 100), 'currency': 'CNY'}
     res = wxpay.refund(gen_id(32), amount, transaction_id=payment.transaction_id,
                        reason=reason, notify_url=NOTIFY_URL ,sub_mchid=SUB_MCHID)
-    print(res)
-    return success()
+    if res[0] == 200:
+        return success()
+    else:
+        return error(str(res[0]), loads(res[1]).get('message'))
 
 
 @http_log()
