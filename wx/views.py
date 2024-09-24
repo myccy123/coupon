@@ -14,7 +14,7 @@ from common.utils.dateutil import format_date, today
 from common.utils.strutil import gen_id
 from wechatpayv3 import WeChatPay, WeChatPayType
 
-from wx.models import UserInfo, PaymentInfo
+from wx.models import UserInfo, PaymentInfo, RefundInfo
 
 # 微信支付商户号（直连模式）或服务商商户号（服务商模式，即sp_mchid)
 MCHID = '1689201091'
@@ -160,14 +160,27 @@ def notify(request):
                                    note=result.get('summary'),
                                    res_content=dumps(result))
         try:
-            u = UserInfo.objects.get(openid=resource.get('payer').get('sub_openid'))
-            u.is_pay = True
-            u.save()
+            user = UserInfo.objects.get(openid=resource.get('payer').get('sub_openid'))
+            user.is_pay = True
+            user.save()
         except UserInfo.DoesNotExist:
             pass
     elif result.get('event_type') == 'REFUND.SUCCESS':
-        pass
-
+        RefundInfo.objects.create(refund_id=resource.get('refund_id'),
+                                  out_refund_no=resource.get('out_refund_no'),
+                                  transaction_id=resource.get('transaction_id'),
+                                  out_trade_no=resource.get('out_trade_no'),
+                                  refund=resource.get('amount').get('refund', 0) / 100,
+                                  total=resource.get('amount').get('total', 0) / 100,
+                                  sp_mchid=resource.get('sp_mchid'),
+                                  sub_mchid=resource.get('sub_mchid'),
+                                  note=result.get('summary'),
+                                  account=resource.get('user_received_account'),
+                                  res_content=dumps(result))
+        payment = PaymentInfo.objects.get(transaction_id=resource.get('transaction_id'))
+        user = UserInfo.objects.get(openid=payment.openid)
+        user.is_pay = False
+        user.save()
     print(f'msg from wx: {result}')
     return success()
 
@@ -217,7 +230,7 @@ def refund(request):
     open_id = body.get('openid', '')
     reason = body.get('reason', '')
     try:
-        payment = PaymentInfo.objects.get(openid=open_id)
+        payment = PaymentInfo.objects.filter(openid=open_id).order_by('create_date').last()
     except PaymentInfo.DoesNotExist:
         return error('01', '未找到可退款的订单！')
     amount = {'refund': int(payment.amount * 100), 'total': int(payment.amount * 100), 'currency': 'CNY'}
