@@ -39,8 +39,10 @@ APIV3_KEY = 'zhonghuarenmingongheguowansui123'
 
 # APPID，应用ID或服务商模式下的sp_appid
 APPID = 'wx27a560d7b1d32c78'
-SUB_APPID = 'wx4e3c719a61caa631'
-APP_SECRET = 'cb96bd2434aceb6da98312c0750507c8'
+# SUB_APPID = 'wx4e3c719a61caa631'
+# APP_SECRET = 'cb96bd2434aceb6da98312c0750507c8'
+SUB_APPID = 'wx1f239327fee3537a'
+APP_SECRET = '5cd890672af97855da6737c311fbd9fa'
 
 # 回调地址，也可以在调用接口的时候覆盖
 NOTIFY_URL = 'https://weaz.fangkuaixiu.com/wx/notify/'
