@@ -235,7 +235,7 @@ def refund(request):
         return error('01', '未找到可退款的订单！')
     amount = {'refund': int(payment.amount * 100), 'total': int(payment.amount * 100), 'currency': 'CNY'}
     res = wxpay.refund(gen_id(32), amount, transaction_id=payment.transaction_id,
-                       reason=reason, notify_url=NOTIFY_URL ,sub_mchid=SUB_MCHID)
+                       reason=reason, notify_url=NOTIFY_URL, sub_mchid=SUB_MCHID)
     if res[0] == 200:
         return success()
     else:
