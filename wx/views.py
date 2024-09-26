@@ -239,6 +239,9 @@ def refund(request):
     res = wxpay.refund(gen_id(32), amount, transaction_id=payment.transaction_id,
                        reason=reason, notify_url=NOTIFY_URL, sub_mchid=SUB_MCHID)
     if res[0] == 200:
+        user = UserInfo.objects.get(openid=open_id)
+        user.is_pay = False
+        user.save()
         return success()
     else:
         return error(str(res[0]), loads(res[1]).get('message'))
@@ -250,7 +253,8 @@ def coupon_list(request):
     page = body.get('page', 1)
     page_size = body.get('pageSize', 10)
     page_size = 10 if page_size > 10 else page_size
-    res = sub_wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID, offset=page - 1, limit=page_size)
+    res = sub_wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID, offset=page - 1,
+                                               limit=page_size, status='running')
     res_data = loads(res[1]).get('data', [])
     return success(res_data)
 
@@ -260,6 +264,9 @@ def coupon_send(request):
     body = loads(request.body)
     open_id = body.get('openid', '')
     stock_id = body.get('stockId', '')
+    user = UserInfo.objects.get(openid=open_id)
+    if not user.is_pay:
+        return error('01', '您不是付款用户！')
     out_request_no = SUB_MCHID + format_date(today(), '%Y%m%d') + gen_id()
     res = sub_wxpay.marketing_favor_stock_send(stock_id, open_id, out_request_no, SUB_MCHID)
     res_data = loads(res[1])
