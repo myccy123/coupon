@@ -10,7 +10,7 @@ import requests
 from common.decorations import http_log
 from common.response import success, error, serialize
 from common.utils.jsonutil import loads, dumps
-from common.utils.dateutil import format_date, today
+from common.utils.dateutil import format_date, today, format_datetime, now
 from common.utils.strutil import gen_id
 from wechatpayv3 import WeChatPay, WeChatPayType
 
@@ -95,10 +95,10 @@ sub_wxpay = WeChatPay(
 )
 
 
-def get_token():
+def get_token(appid, key):
     params = {
-        'appid': APPID,
-        'secret': APP_SECRET,
+        'appid': appid,
+        'secret': key,
         'grant_type': 'client_credential',
     }
     url = 'https://api.weixin.qq.com/cgi-bin/token'
@@ -161,6 +161,8 @@ def notify(request):
                                    sub_openid=resource.get('payer').get('sub_openid'),
                                    note=result.get('summary'),
                                    res_content=dumps(result))
+        wx_message(resource.get('payer').get('sub_openid'), resource.get('transaction_id'),
+                   resource.get('amount').get('total') / 100)
         try:
             user = UserInfo.objects.get(openid=resource.get('payer').get('sub_openid'))
             user.is_pay = True
@@ -281,3 +283,31 @@ def my_coupons(request):
     res = sub_wxpay.marketing_favor_user_coupon(open_id, stock_id=stock_id, creator_mchid=SUB_MCHID)
     res_data = loads(res[1]).get('data', [])
     return success(res_data)
+
+
+def wx_message(openid, order_id, amount):
+    order_time = format_datetime(now())
+    mch_name = '歪蒯蒽助手'
+    order_id = order_id
+    order_amt = f'￥{amount}'
+    note = '如需疑问或投诉，请进入小程序内联系客服'
+
+    body = {
+        'touser': openid,
+        'template_id': 'spLLO32O73RoFqumFKA8Cl3MTlAwVljgI614LBrSdNc',
+        'page': f'pages/ticket/ticket',
+        'data': {
+            'time3': {'value': order_time},
+            'thing4': {'value': mch_name},
+            'character_string7': {'value': order_id},
+            'amount11': {'value': order_amt},
+            'thing8': {'value': note},
+        },
+        'miniprogram_state': 'formal'
+    }
+    url = f'https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token={get_token(SUB_APPID, APP_SECRET)}'
+    res = requests.post(url, json=body)
+    if res.status_code == 200:
+        print(f'wx msg sended: {res.json()}')
+    else:
+        print(f'wx msg error: {res.text}')
