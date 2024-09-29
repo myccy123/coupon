@@ -258,7 +258,7 @@ def coupon_list(request):
     res = sub_wxpay.marketing_favor_stock_list(stock_creator_mchid=SUB_MCHID, offset=page - 1,
                                                limit=page_size, status='running')
     res_data = loads(res[1]).get('data', [])
-    return success(res_data)
+    return success(list(reversed(res_data)))
 
 
 @http_log()
