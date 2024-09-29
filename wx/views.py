@@ -45,7 +45,7 @@ SUB_APPID = 'wx1f239327fee3537a'
 APP_SECRET = '5cd890672af97855da6737c311fbd9fa'
 
 # 回调地址，也可以在调用接口的时候覆盖
-NOTIFY_URL = 'https://weaz.fangkuaixiu.com/wx/notify/'
+NOTIFY_URL = 'https://wwei.henanfa.com/wx/notify/'
 
 # 微信支付平台证书缓存目录，减少证书下载调用次数，首次使用确保此目录为空目录.
 # 初始调试时可不设置，调试通过后再设置，示例值:'./cert'
@@ -292,6 +292,10 @@ def wx_message(openid, order_id, amount):
     order_amt = f'￥{amount}'
     note = '如需疑问或投诉，请进入小程序内联系客服'
 
+    # 报警时间{{time3.DATA}}
+    # 设备名称{{thing2.DATA}}
+    # 报警类型{{thing5.DATA}}
+    # 报警内容{{thing10.DATA}}
     body = {
         'touser': openid,
         'template_id': 'spLLO32O73RoFqumFKA8Cl3MTlAwVljgI614LBrSdNc',
